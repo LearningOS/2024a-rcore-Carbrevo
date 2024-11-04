@@ -19,7 +19,7 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 /// page table entry structure
 pub struct PageTableEntry {
@@ -141,7 +141,10 @@ impl PageTable {
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.find_pte(vpn).map(|pte| *pte)
+        let pte = self.find_pte(vpn).map(|pte| *pte);
+        trace!("PTE: VIRT={:?} -> PTE={:?}", vpn, pte);
+        pte
+
     }
     /// get the token from the page table
     pub fn token(&self) -> usize {

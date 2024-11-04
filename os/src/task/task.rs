@@ -1,10 +1,28 @@
 //! Types related to task management
 use super::TaskContext;
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::*;
 use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
 use crate::trap::{trap_handler, TrapContext};
+
+///
+#[derive(Copy, Clone)]
+pub struct TaskStatis {
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// Total running time of task
+    pub starttime: usize,
+}
+
+impl Default for TaskStatis {
+    fn default() -> Self {
+        Self {
+            syscall_times: [0u32; MAX_SYSCALL_NUM],
+            starttime: 0usize,
+        }
+    }
+}
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -13,6 +31,9 @@ pub struct TaskControlBlock {
 
     /// Maintain the execution status of the current process
     pub task_status: TaskStatus,
+
+    /// The task statis
+    pub statis: TaskStatis,
 
     /// Application address space
     pub memory_set: MemorySet,
@@ -58,6 +79,7 @@ impl TaskControlBlock {
         let task_control_block = Self {
             task_status,
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+            statis: TaskStatis::default(),
             memory_set,
             trap_cx_ppn,
             base_size: user_sp,

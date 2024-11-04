@@ -14,13 +14,16 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use core::cell::{RefMut};
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+use crate::syscall::TaskInfo;
+use crate::timer::{get_time_us, };
+pub use task::{TaskControlBlock, TaskStatus, TaskStatis};
 
 pub use context::TaskContext;
 
@@ -41,11 +44,11 @@ pub struct TaskManager {
 }
 
 /// The task manager inner in 'UPSafeCell'
-struct TaskManagerInner {
+pub struct TaskManagerInner {
     /// task list
-    tasks: Vec<TaskControlBlock>,
+    pub tasks: Vec<TaskControlBlock>,
     /// id of current `Running` task
-    current_task: usize,
+    pub current_task: usize,
 }
 
 lazy_static! {
@@ -71,6 +74,18 @@ lazy_static! {
 }
 
 impl TaskManager {
+    #[cfg(experiment)]
+    pub fn current_task(&self) -> &TaskControlBlock {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        &inner.tasks[current]
+    }
+
+    ///
+    pub fn task_inner(&self) -> RefMut<'_, TaskManagerInner> {
+        self.inner.exclusive_access()
+    }
+
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
@@ -144,6 +159,11 @@ impl TaskManager {
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
+            trace!(
+                "task_switch: {} -> {}",
+                current, next
+            );
+                self.set_task_startime();
             // before this, we should drop local variables that must be dropped manually
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
@@ -151,6 +171,70 @@ impl TaskManager {
             // go back to user mode
         } else {
             panic!("All applications completed!");
+        }
+    }
+
+    ///
+    pub fn get_taskinfo(&self) -> TaskInfo {
+        trace!(
+            "get_taskinfo() calling"
+        );
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = &inner.tasks[current];
+    
+        trace!(
+            "@{} get_taskinfo()_1: starttime={}, syscall_times = {:?}",
+            current,
+            curtsk.statis.starttime,
+            curtsk.statis.syscall_times
+        );
+        let ti = TaskInfo {
+            status: TaskStatus::Running,
+            syscall_times: curtsk.statis.syscall_times,
+            time: (get_time_us() - curtsk.statis.starttime + 500)/1000,
+        };
+        trace!(
+            "@{} get_taskinfo()_2: syscall_times = {:?}",
+            current,
+            curtsk.statis.syscall_times
+        );
+        ti
+    }
+
+    ///
+    pub fn inc_syscall_times(&self, syscall_id:usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = &mut inner.tasks[current];
+    
+        curtsk.statis.syscall_times[syscall_id] += 1;
+        trace!(
+            "@{} inc_syscall_times() [{}] => {}",
+            current,
+            syscall_id, curtsk.statis.syscall_times[syscall_id]
+        );
+    }
+
+    ///
+    pub fn set_task_startime(&self) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = &mut inner.tasks[current];
+    
+        if curtsk.statis.starttime == 0 {
+            curtsk.statis.starttime = get_time_us();
+            trace!(
+                "@{} task_startime() set={:?}",
+                current,
+                curtsk.statis.starttime
+            );        
+        } else {
+            trace!(
+                "@{} task_startime() at={:?}",
+                current,
+                curtsk.statis.starttime
+            );        
         }
     }
 }

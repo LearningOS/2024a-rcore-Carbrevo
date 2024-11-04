@@ -63,6 +63,27 @@ impl MemorySet {
             None,
         );
     }
+
+    /// Assume match exactly.
+    pub fn remove_framed_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+    ) {
+        if let Some(mut area) = self.get_area(start_va.floor()) {
+            assert!(area.vpn_range.get_end() == end_va.floor());
+            area.unmap(&mut self.page_table);
+        }
+    }
+
+    fn get_area(&mut self, vpn: VirtPageNum) -> Option<MapArea> {
+        let idx = self.areas
+                        .iter()
+                        .enumerate()
+                        .fold(None, |found, (i, x)| if x.vpn_range.get_start() == vpn {Some(i)} else {found})?;
+        Some(self.areas.swap_remove(idx))
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -265,7 +286,7 @@ impl MemorySet {
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
-    vpn_range: VPNRange,
+    pub vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
     map_type: MapType,
     map_perm: MapPermission,
@@ -376,6 +397,24 @@ bitflags! {
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
+    }
+}
+
+impl From<usize> for MapPermission {
+
+    fn from(port: usize) -> Self {
+        let mut map_perm = MapPermission::U;
+        if (port & 0x01) != 0 {
+            map_perm |= MapPermission::R;
+        }
+        if (port & 0x02) != 0 {
+            map_perm |= MapPermission::W;
+        }
+        if (port & 0x04) != 0 {
+            map_perm |= MapPermission::X;
+        }
+
+        map_perm
     }
 }
 
