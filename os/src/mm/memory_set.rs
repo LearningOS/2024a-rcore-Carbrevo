@@ -90,7 +90,28 @@ impl MemorySet {
             PTEFlags::R | PTEFlags::X,
         );
     }
-    /// Without kernel stacks.
+
+    /// Without app contents.
+    pub fn new_user() -> Self {
+        let mut memory_set = Self::new_bare();
+        // map trampoline
+        memory_set.map_trampoline();
+
+        // map TrapContext
+        memory_set.push(
+            MapArea::new(
+                TRAP_CONTEXT_BASE.into(),
+                TRAMPOLINE.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+
+        memory_set
+    }
+
+        /// Without kernel stacks.
     pub fn new_kernel() -> Self {
         let mut memory_set = Self::new_bare();
         // map trampoline
@@ -303,7 +324,7 @@ impl MemorySet {
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
-    vpn_range: VPNRange,
+    pub vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
     map_type: MapType,
     map_perm: MapPermission,
@@ -420,6 +441,24 @@ bitflags! {
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
+    }
+}
+
+impl From<usize> for MapPermission {
+
+    fn from(port: usize) -> Self {
+        let mut map_perm = MapPermission::U;
+        if (port & 0x01) != 0 {
+            map_perm |= MapPermission::R;
+        }
+        if (port & 0x02) != 0 {
+            map_perm |= MapPermission::W;
+        }
+        if (port & 0x04) != 0 {
+            map_perm |= MapPermission::X;
+        }
+
+        map_perm
     }
 }
 

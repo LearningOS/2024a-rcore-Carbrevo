@@ -1,13 +1,33 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::*;
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use crate::syscall::process::TaskInfo;
+use crate::timer::{get_time_us, };
+
+///
+#[derive(Copy, Clone)]
+pub struct TaskStatis {
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// Total running time of task
+    pub starttime: usize,
+}
+
+impl Default for TaskStatis {
+    fn default() -> Self {
+        Self {
+            syscall_times: [0u32; MAX_SYSCALL_NUM],
+            starttime: 0usize,
+        }
+    }
+}
 
 /// Task control block structure
 ///
@@ -49,6 +69,15 @@ pub struct TaskControlBlockInner {
 
     /// Maintain the execution status of the current process
     pub task_status: TaskStatus,
+
+    ///
+    pub stride: usize,
+
+    ///
+    pub pass: usize,
+
+    /// The task statis
+    pub statis: TaskStatis,
 
     /// Application address space
     pub memory_set: MemorySet,
@@ -112,6 +141,9 @@ impl TaskControlBlock {
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    stride: 0,
+                    pass: BIG_STRIDE / 16,
+	                statis: TaskStatis::default(),
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -185,6 +217,9 @@ impl TaskControlBlock {
                     base_size: parent_inner.base_size,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    stride: 0,
+                    pass: BIG_STRIDE / 16,
+                    statis: TaskStatis::default(),
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -206,6 +241,54 @@ impl TaskControlBlock {
         // ---- release parent PCB
     }
 
+    /// parent process spawn the child process
+    pub fn spawn(self: &Arc<Self>) -> Arc<Self> {
+        // ---- access parent PCB exclusively
+        let mut parent_inner = self.inner_exclusive_access();
+        // copy user space(include trap context)
+        //let memory_set = MemorySet::from_existed_user(&parent_inner.memory_set);
+        let memory_set = MemorySet::new_user();
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
+            .unwrap()
+            .ppn();
+        // alloc a pid and a kernel stack in kernel space
+        let pid_handle = pid_alloc();
+        let kernel_stack = kstack_alloc();
+        let kernel_stack_top = kernel_stack.get_top();
+        let task_control_block = Arc::new(TaskControlBlock {
+            pid: pid_handle,
+            kernel_stack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    trap_cx_ppn,
+                    base_size: parent_inner.base_size,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status: TaskStatus::Ready,
+                    stride: 0,
+                    pass: BIG_STRIDE / 16,
+                    statis: TaskStatis::default(),
+                    memory_set,
+                    parent: Some(Arc::downgrade(self)),
+                    children: Vec::new(),
+                    exit_code: 0,
+                    heap_bottom: parent_inner.heap_bottom,
+                    program_brk: parent_inner.program_brk,
+                })
+            },
+        });
+        // add child
+        parent_inner.children.push(task_control_block.clone());
+        // modify kernel_sp in trap_cx
+        // **** access child PCB exclusively
+        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
+        trap_cx.kernel_sp = kernel_stack_top;
+        // return
+        task_control_block
+        // **** release child PCB
+        // ---- release parent PCB
+    }
+    
     /// get pid of process
     pub fn getpid(&self) -> usize {
         self.pid.0
@@ -234,6 +317,64 @@ impl TaskControlBlock {
             Some(old_break)
         } else {
             None
+        }
+    }
+
+    ///
+    pub fn get_taskinfo(&self) -> TaskInfo {
+        trace!(
+            "get_taskinfo() calling"
+        );
+        let task_inner = self.inner_exclusive_access();
+        
+        trace!(
+            "@{} get_taskinfo()_1: starttime={}, syscall_times = {:?}",
+            self.getpid(),
+            task_inner.statis.starttime,
+            task_inner.statis.syscall_times
+        );
+        let ti = TaskInfo {
+            status: TaskStatus::Running,
+            syscall_times: task_inner.statis.syscall_times,
+            time: (get_time_us() - task_inner.statis.starttime + 500)/1000,
+        };
+        trace!(
+            "@{} get_taskinfo()_2: syscall_times = {:?}",
+            self.getpid(),
+            task_inner.statis.syscall_times
+        );
+        ti
+    }
+
+    ///
+    pub fn inc_syscall_times(&self, syscall_id:usize) {
+        let mut task_inner = self.inner_exclusive_access();
+    
+        task_inner.statis.syscall_times[syscall_id] += 1;
+        trace!(
+            "@{} inc_syscall_times() [{}] => {}",
+            self.getpid(),
+            syscall_id, task_inner.statis.syscall_times[syscall_id]
+        );
+    }
+
+    ///
+    pub fn set_task_startime(&self) {
+        let mut task_inner = self.inner_exclusive_access();
+    
+        if task_inner.statis.starttime == 0 {
+            task_inner.statis.starttime = get_time_us();
+            trace!(
+                "@{} task_startime() set={:?}",
+                self.getpid(),
+                task_inner.statis.starttime
+            );        
+        } else {
+            trace!(
+                "@{} task_startime() at={:?}",
+                self.getpid(),
+                task_inner.statis.starttime
+            );        
         }
     }
 }
