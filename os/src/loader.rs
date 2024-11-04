@@ -76,6 +76,9 @@ pub fn load_apps() {
     }
     // load apps
     for i in 0..num_app {
+        trace!(
+            "[app] loading app{}", i);
+    
         let base_i = get_base_i(i);
         // clear region
         (base_i..base_i + APP_SIZE_LIMIT)

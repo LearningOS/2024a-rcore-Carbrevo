@@ -19,7 +19,9 @@ use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+use crate::syscall::TaskInfo;
+use crate::timer::{get_time_us, };
+pub use task::{TaskControlBlock, TaskStatus, TaskStatis};
 
 pub use context::TaskContext;
 
@@ -54,6 +56,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            statis: TaskStatis::default(),
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -126,6 +129,11 @@ impl TaskManager {
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
+            trace!(
+                "task_switch: {} -> {}",
+                current, next
+            );
+                self.set_task_startime();
             // before this, we should drop local variables that must be dropped manually
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
@@ -135,7 +143,82 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    ///
+    pub fn get_taskinfo(&self) -> TaskInfo {
+        trace!(
+            "get_taskinfo() calling"
+        );
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = inner.tasks[current];
+    
+        trace!(
+            "@{} get_taskinfo()_1: starttime={}, syscall_times = {:?}",
+            current,
+            curtsk.statis.starttime,
+            curtsk.statis.syscall_times
+        );
+        let ti = TaskInfo {
+            status: TaskStatus::Running,
+            syscall_times: curtsk.statis.syscall_times,
+            time: (get_time_us() - curtsk.statis.starttime + 500)/1000,
+        };
+        trace!(
+            "@{} get_taskinfo()_2: syscall_times = {:?}",
+            current,
+            curtsk.statis.syscall_times
+        );
+        ti
+    }
+
+    ///
+    pub fn inc_syscall_times(&self, syscall_id:usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = &mut inner.tasks[current];
+    
+        curtsk.statis.syscall_times[syscall_id] += 1;
+        trace!(
+            "@{} inc_syscall_times() [{}] => {}",
+            current,
+            syscall_id, curtsk.statis.syscall_times[syscall_id]
+        );
+    }
+
+    ///
+    pub fn set_task_startime(&self) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let curtsk = &mut inner.tasks[current];
+    
+        if curtsk.statis.starttime == 0 {
+            curtsk.statis.starttime = get_time_us();
+            trace!(
+                "@{} task_startime() set={:?}",
+                current,
+                curtsk.statis.starttime
+            );        
+        } else {
+            trace!(
+                "@{} task_startime() at={:?}",
+                current,
+                curtsk.statis.starttime
+            );        
+        }
+    }
 }
+
+/*
+pub fn current_task() -> &'static TaskControlBlock {
+    &TASK_MANAGER.inner.exclusive_access().tasks[TASK_MANAGER.inner.exclusive_access().current_task]
+}*/
+
+/*pub fn current_task_mut() -> &'static mut TaskControlBlock {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    &mut inner.tasks[current]
+}*/
 
 /// Run the first task in task list.
 pub fn run_first_task() {
