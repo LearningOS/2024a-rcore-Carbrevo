@@ -2,6 +2,10 @@
 #![no_std]
 #![deny(missing_docs)]
 extern crate alloc;
+#[macro_use]
+extern crate bitflags;
+#[macro_use]
+extern crate log;
 mod bitmap;
 mod block_cache;
 mod block_dev;
@@ -16,3 +20,5 @@ pub use block_dev::BlockDevice;
 pub use efs::EasyFileSystem;
 use layout::*;
 pub use vfs::Inode;
+pub use vfs::StatMode;
+

@@ -72,6 +72,7 @@ impl SuperBlock {
 pub enum DiskInodeType {
     File,
     Directory,
+    Link,
 }
 
 /// A indirect block
@@ -233,6 +234,147 @@ impl DiskInode {
                     }
                 }
             });
+    }
+
+    /// Decrease the size of current disk inode
+    pub fn decrease_size(
+        &mut self,
+        new_size: u32,
+        block_device: &Arc<dyn BlockDevice>,
+    ) -> Vec<u32> {
+        let mut current_blocks = self.data_blocks();
+        self.size = new_size;
+        let mut total_blocks = self.data_blocks();
+        let mut free_blocks = Vec::<u32>::new();
+
+        trace!("decrease_size: {} -> {}", current_blocks, total_blocks);
+        if current_blocks == total_blocks {
+            return free_blocks;
+        }
+
+        // free indirect2
+        if total_blocks > INDIRECT1_BOUND as u32 {
+            trace!("Only proceed indirect2");
+
+            current_blocks -= INODE_INDIRECT1_COUNT as u32;
+            total_blocks -= INODE_INDIRECT1_COUNT as u32;
+
+            // fill indirect2 from (a0, b0) -> (a1, b1)
+            let mut l2last_idx = current_blocks as usize / INODE_INDIRECT1_COUNT;
+            let mut l1last_idx = current_blocks as usize % INODE_INDIRECT1_COUNT;
+            // alloc low-level indirect1
+            get_block_cache(self.indirect2 as usize, Arc::clone(block_device))
+                .lock()
+                .modify(0, |indirect2: &mut IndirectBlock| {
+                    let mut l2_idx = indirect2.len() - 1;
+                    while l2_idx > l2last_idx {
+                        get_block_cache(indirect2[l2_idx] as usize, Arc::clone(block_device))
+                            .lock()
+                            .modify(0, |indirect1: &mut IndirectBlock| {
+                                for l1_idx in 0..indirect1.len() {
+                                    free_blocks.push(indirect1[l1_idx]);
+                                    indirect1[l1_idx] = 0;
+                                    current_blocks -= 1;
+                                }
+                            });
+                        free_blocks.push(indirect2[l2_idx]);
+                        indirect2[l2_idx] = 0;
+                        l2_idx -= 1;
+                    }
+                    get_block_cache(indirect2[l2_idx] as usize, Arc::clone(block_device))
+                    .lock()
+                    .modify(0, |indirect1: &mut IndirectBlock| {
+                        for l1_idx in l1last_idx..indirect1.len() {
+                            free_blocks.push(indirect1[l1_idx]);
+                            indirect1[l1_idx] = 0;
+                            current_blocks -= 1;
+                        }
+                    });
+                });
+            assert_eq!(current_blocks, total_blocks);
+            return free_blocks;            
+        }
+
+        // clear indirect2
+        if current_blocks > INDIRECT1_BOUND as u32 {
+            trace!("Clear all indirect2");
+            get_block_cache(self.indirect2 as usize, Arc::clone(block_device))
+            .lock()
+            .modify(0, |indirect2: &mut IndirectBlock| {
+                for l2_idx in 0..indirect2.len() {
+                    get_block_cache(indirect2[l2_idx] as usize, Arc::clone(block_device))
+                        .lock()
+                        .modify(0, |indirect1: &mut IndirectBlock| {
+                            for l1_idx in 0..indirect1.len() {
+                                free_blocks.push(indirect1[l1_idx]);
+                                indirect1[l1_idx] = 0;
+                                current_blocks -= 1;
+                            }
+                        });
+                    free_blocks.push(indirect2[l2_idx]);
+                    indirect2[l2_idx] = 0;
+                }
+            });
+            free_blocks.push(self.indirect2);
+            self.indirect2 = 0;
+            assert!(current_blocks >= total_blocks);
+            if current_blocks == total_blocks {
+                return free_blocks;
+            }
+        }
+
+        // free indirect1
+        if total_blocks > DIRECT_BOUND as u32 {
+            current_blocks -= INODE_DIRECT_COUNT as u32;
+            total_blocks -= INODE_DIRECT_COUNT as u32;
+
+            // fill indirect1
+            get_block_cache(self.indirect1 as usize, Arc::clone(block_device))
+                .lock()
+                .modify(0, |indirect1: &mut IndirectBlock| {
+                    assert!(current_blocks <= indirect1.len() as u32);
+                    for l1_idx in total_blocks as usize..indirect1.len() {
+                        free_blocks.push(indirect1[l1_idx]);
+                        indirect1[l1_idx] = 0;
+                        current_blocks -= 1;
+                    }
+                });
+            assert_eq!(current_blocks, total_blocks);
+            return free_blocks;
+        }
+
+        // clear indirect1
+        if current_blocks > DIRECT_BOUND as u32 {
+            trace!("Clear all indirect1");
+            get_block_cache(self.indirect1 as usize, Arc::clone(block_device))
+            .lock()
+            .modify(0, |indirect1: &mut IndirectBlock| {
+                assert!(current_blocks <= indirect1.len() as u32);
+                for l1_idx in 0..indirect1.len() {
+                    free_blocks.push(indirect1[l1_idx]);
+                    indirect1[l1_idx] = 0;
+                    current_blocks -= 1;
+                }
+            });
+            free_blocks.push(self.indirect1);
+            self.indirect1 = 0;
+            assert!(current_blocks >= total_blocks);
+            if current_blocks == total_blocks {
+                return free_blocks;
+            }
+        }
+        
+        // fill direct
+        trace!("free some directblock");
+        while current_blocks > total_blocks.min(INODE_DIRECT_COUNT as u32) {
+            current_blocks -= 1;
+            free_blocks.push(self.direct[current_blocks as usize]);
+            self.direct[current_blocks as usize] = 0;
+        }
+
+        assert!(current_blocks == total_blocks);
+        trace!("Total {} blocks freed", free_blocks.len());
+        free_blocks
     }
 
     /// Clear size to zero and return blocks that should be deallocated.

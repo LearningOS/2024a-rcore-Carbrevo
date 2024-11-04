@@ -16,3 +16,10 @@ xmas-elf = "0.7.0"
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5" }
 easy-fs = { path = "../easy-fs" }
 
+[features]
+debug_open = []
+debug_close = []
+debug_fstat = []
+debug_link = []
+debug = [ "debug_open", "debug_close", "debug_fstat", "debug_link",  ]
+default = [ "debug" ]
