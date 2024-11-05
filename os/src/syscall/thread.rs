@@ -6,6 +6,7 @@ use crate::{
 use alloc::sync::Arc;
 /// thread create syscall
 pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_thread_create",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -54,6 +55,7 @@ pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
 }
 /// get current thread id syscall
 pub fn sys_gettid() -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_gettid",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -80,6 +82,7 @@ pub fn sys_gettid() -> isize {
 /// thread has not exited yet, return -2
 /// otherwise, return thread's exit code
 pub fn sys_waittid(tid: usize) -> i32 {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_waittid",
         current_task().unwrap().process.upgrade().unwrap().getpid(),

@@ -1,9 +1,11 @@
 use crate::fs::{make_pipe, open_file, OpenFlags, Stat};
 use crate::mm::{translated_byte_buffer, translated_refmut, translated_str, UserBuffer};
+#[allow(unused_imports)]
 use crate::task::{current_process, current_task, current_user_token};
 use alloc::sync::Arc;
 /// write syscall
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_write",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -28,6 +30,7 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
 }
 /// read syscall
 pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_read",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -45,6 +48,7 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
         }
         // release current task TCB manually to avoid multi-borrow
         drop(inner);
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: sys_read .. file.read");
         file.read(UserBuffer::new(translated_byte_buffer(token, buf, len))) as isize
     } else {
@@ -53,6 +57,7 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
 }
 /// open sys
 pub fn sys_open(path: *const u8, flags: u32) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_open",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -71,6 +76,7 @@ pub fn sys_open(path: *const u8, flags: u32) -> isize {
 }
 /// close syscall
 pub fn sys_close(fd: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_close",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -88,6 +94,7 @@ pub fn sys_close(fd: usize) -> isize {
 }
 /// pipe syscall
 pub fn sys_pipe(pipe: *mut usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_pipe",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -106,6 +113,7 @@ pub fn sys_pipe(pipe: *mut usize) -> isize {
 }
 /// dup syscall
 pub fn sys_dup(fd: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_dup",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -125,6 +133,7 @@ pub fn sys_dup(fd: usize) -> isize {
 
 /// YOUR JOB: Implement fstat.
 pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -134,6 +143,7 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
 
 /// YOUR JOB: Implement linkat.
 pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -143,6 +153,7 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
 
 /// YOUR JOB: Implement unlinkat.
 pub fn sys_unlinkat(_name: *const u8) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()

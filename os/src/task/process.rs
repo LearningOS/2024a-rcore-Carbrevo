@@ -8,6 +8,7 @@ use super::{pid_alloc, PidHandle};
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
+use crate::sync::{ResMonitor, };
 use crate::trap::{trap_handler, TrapContext};
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
@@ -21,6 +22,7 @@ pub struct ProcessControlBlock {
     pub pid: PidHandle,
     /// mutable
     inner: UPSafeCell<ProcessControlBlockInner>,
+    pub resmon: UPSafeCell<ResMonitor>,
 }
 
 /// Inner of Process Control Block
@@ -49,6 +51,8 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    ///
+    pub detect_deadlock: bool,
 }
 
 impl ProcessControlBlockInner {
@@ -91,6 +95,7 @@ impl ProcessControlBlock {
     }
     /// new process from elf file
     pub fn new(elf_data: &[u8]) -> Arc<Self> {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: ProcessControlBlock::new");
         // memory_set with elf program headers/trampoline/trap context/user stack
         let (memory_set, ustack_base, entry_point) = MemorySet::from_elf(elf_data);
@@ -119,8 +124,10 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    detect_deadlock: false,
                 })
             },
+            resmon: unsafe { UPSafeCell::new(ResMonitor::new()) },
         });
         // create a main thread, we should allocate ustack and trap_cx here
         let task = Arc::new(TaskControlBlock::new(
@@ -151,19 +158,33 @@ impl ProcessControlBlock {
         process
     }
 
+    ///
+    pub fn detect_deadlock(&self) -> bool {
+        self.inner_exclusive_access().detect_deadlock
+    }
+
+    ///
+    pub fn set_detect_deadlock(&self, enable: bool) {
+        self.inner_exclusive_access().detect_deadlock = enable;
+    }
+
     /// Only support processes with a single thread.
     pub fn exec(self: &Arc<Self>, elf_data: &[u8], args: Vec<String>) {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec");
         assert_eq!(self.inner_exclusive_access().thread_count(), 1);
         // memory_set with elf program headers/trampoline/trap context/user stack
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec .. MemorySet::from_elf");
         let (memory_set, ustack_base, entry_point) = MemorySet::from_elf(elf_data);
         let new_token = memory_set.token();
         // substitute memory_set
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec .. substitute memory_set");
         self.inner_exclusive_access().memory_set = memory_set;
         // then we alloc user resource for main thread again
         // since memory_set has been changed
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec .. alloc user resource for main thread again");
         let task = self.inner_exclusive_access().get_task(0);
         let mut task_inner = task.inner_exclusive_access();
@@ -171,6 +192,7 @@ impl ProcessControlBlock {
         task_inner.res.as_mut().unwrap().alloc_user_res();
         task_inner.trap_cx_ppn = task_inner.res.as_mut().unwrap().trap_cx_ppn();
         // push arguments on user stack
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec .. push arguments on user stack");
         let mut user_sp = task_inner.res.as_mut().unwrap().ustack_top();
         user_sp -= (args.len() + 1) * core::mem::size_of::<usize>();
@@ -197,6 +219,7 @@ impl ProcessControlBlock {
         // make the user_sp aligned to 8B for k210 platform
         user_sp -= user_sp % core::mem::size_of::<usize>();
         // initialize trap_cx
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: exec .. initialize trap_cx");
         let mut trap_cx = TrapContext::app_init_context(
             entry_point,
@@ -212,6 +235,7 @@ impl ProcessControlBlock {
 
     /// Only support processes with a single thread.
     pub fn fork(self: &Arc<Self>) -> Arc<Self> {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: fork");
         let mut parent = self.inner_exclusive_access();
         assert_eq!(parent.thread_count(), 1);
@@ -245,8 +269,10 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    detect_deadlock: false,
                 })
             },
+            resmon: unsafe { UPSafeCell::new(ResMonitor::new()) },
         });
         // add child
         parent.children.push(Arc::clone(&child));

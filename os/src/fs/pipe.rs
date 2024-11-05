@@ -101,6 +101,7 @@ impl PipeRingBuffer {
 
 /// Return (read_end, write_end)
 pub fn make_pipe() -> (Arc<Pipe>, Arc<Pipe>) {
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: make_pipe");
     let buffer = Arc::new(unsafe { UPSafeCell::new(PipeRingBuffer::new()) });
     let read_end = Arc::new(Pipe::read_end_with_buffer(buffer.clone()));
@@ -117,6 +118,7 @@ impl File for Pipe {
         self.writable
     }
     fn read(&self, buf: UserBuffer) -> usize {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: Pipe::read");
         assert!(self.readable());
         let want_to_read = buf.len();
@@ -149,6 +151,7 @@ impl File for Pipe {
         }
     }
     fn write(&self, buf: UserBuffer) -> usize {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: Pipe::write");
         assert!(self.writable());
         let want_to_write = buf.len();

@@ -5,6 +5,7 @@ use core::cmp::Ordering;
 use crate::config::CLOCK_FREQ;
 use crate::sbi::set_timer;
 use crate::sync::UPSafeCell;
+#[allow(unused_imports)]
 use crate::task::{current_task, wakeup_task, TaskControlBlock};
 use alloc::collections::BinaryHeap;
 use alloc::sync::Arc;
@@ -74,6 +75,7 @@ lazy_static! {
 
 /// Add a timer
 pub fn add_timer(expire_ms: usize, task: Arc<TaskControlBlock>) {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] add_timer",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -85,6 +87,7 @@ pub fn add_timer(expire_ms: usize, task: Arc<TaskControlBlock>) {
 /// Remove a timer
 pub fn remove_timer(task: Arc<TaskControlBlock>) {
     //trace!("kernel:pid[{}] remove_timer", current_task().unwrap().process.upgrade().unwrap().getpid());
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: remove_timer");
     let mut timers = TIMERS.exclusive_access();
     let mut temp = BinaryHeap::<TimerCondVar>::new();
@@ -95,11 +98,13 @@ pub fn remove_timer(task: Arc<TaskControlBlock>) {
     }
     timers.clear();
     timers.append(&mut temp);
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: remove_timer END");
 }
 
 /// Check if the timer has expired
 pub fn check_timer() {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] check_timer",
         current_task().unwrap().process.upgrade().unwrap().getpid()

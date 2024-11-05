@@ -70,6 +70,7 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 
 /// Wake up a task
 pub fn wakeup_task(task: Arc<TaskControlBlock>) {
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: TaskManager::wakeup_task");
     let mut task_inner = task.inner_exclusive_access();
     task_inner.task_status = TaskStatus::Ready;

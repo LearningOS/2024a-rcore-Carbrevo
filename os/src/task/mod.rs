@@ -72,6 +72,7 @@ use crate::board::QEMUExit;
 
 /// Exit the current 'Running' task and run the next task in task list.
 pub fn exit_current_and_run_next(exit_code: i32) {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel: pid[{}] exit_current_and_run_next",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -201,6 +202,7 @@ pub fn current_add_signal(signal: SignalFlags) {
 /// the inactive(blocked) tasks are removed when the PCB is deallocated.(called by exit_current_and_run_next)
 pub fn remove_inactive_task(task: Arc<TaskControlBlock>) {
     remove_task(Arc::clone(&task));
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: remove_inactive_task .. remove_timer");
     remove_timer(Arc::clone(&task));
 }

@@ -4,6 +4,7 @@ use crate::timer::{add_timer, get_time_ms};
 use alloc::sync::Arc;
 /// sleep syscall
 pub fn sys_sleep(ms: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_sleep",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -23,6 +24,7 @@ pub fn sys_sleep(ms: usize) -> isize {
 }
 /// mutex create syscall
 pub fn sys_mutex_create(blocking: bool) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_mutex_create",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -57,6 +59,7 @@ pub fn sys_mutex_create(blocking: bool) -> isize {
 }
 /// mutex lock syscall
 pub fn sys_mutex_lock(mutex_id: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_mutex_lock",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -73,11 +76,11 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     let mutex = Arc::clone(process_inner.mutex_list[mutex_id].as_ref().unwrap());
     drop(process_inner);
     drop(process);
-    mutex.lock();
-    0
+    mutex.lock() as isize
 }
 /// mutex unlock syscall
 pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_mutex_unlock",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -99,6 +102,7 @@ pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
 }
 /// semaphore create syscall
 pub fn sys_semaphore_create(res_count: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_semaphore_create",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -131,8 +135,9 @@ pub fn sys_semaphore_create(res_count: usize) -> isize {
 }
 /// semaphore up syscall
 pub fn sys_semaphore_up(sem_id: usize) -> isize {
+    #[cfg(feature = "debug_sem")]
     trace!(
-        "kernel:pid[{}] tid[{}] sys_semaphore_up",
+        "kernel:pid[{}] tid[{}] sys_semaphore_up: sem_id=={}",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
         current_task()
             .unwrap()
@@ -140,7 +145,8 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
             .res
             .as_ref()
             .unwrap()
-            .tid
+            .tid,
+        sem_id,        
     );
     let process = current_process();
     let process_inner = process.inner_exclusive_access();
@@ -151,8 +157,9 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
 }
 /// semaphore down syscall
 pub fn sys_semaphore_down(sem_id: usize) -> isize {
+    #[cfg(feature = "debug_sem")]
     trace!(
-        "kernel:pid[{}] tid[{}] sys_semaphore_down",
+        "kernel:pid[{}] tid[{}] sys_semaphore_down: sem_id={}",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
         current_task()
             .unwrap()
@@ -160,17 +167,18 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
             .res
             .as_ref()
             .unwrap()
-            .tid
+            .tid,
+        sem_id,
     );
     let process = current_process();
     let process_inner = process.inner_exclusive_access();
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
     drop(process_inner);
-    sem.down();
-    0
+    sem.down() as isize
 }
 /// condvar create syscall
 pub fn sys_condvar_create() -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_condvar_create",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -203,6 +211,7 @@ pub fn sys_condvar_create() -> isize {
 }
 /// condvar signal syscall
 pub fn sys_condvar_signal(condvar_id: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_condvar_signal",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -223,6 +232,7 @@ pub fn sys_condvar_signal(condvar_id: usize) -> isize {
 }
 /// condvar wait syscall
 pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] tid[{}] sys_condvar_wait",
         current_task().unwrap().process.upgrade().unwrap().getpid(),
@@ -246,6 +256,14 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
 ///
 /// YOUR JOB: Implement deadlock detection, but might not all in this syscall
 pub fn sys_enable_deadlock_detect(_enabled: usize) -> isize {
-    trace!("kernel: sys_enable_deadlock_detect NOT IMPLEMENTED");
-    -1
+    #[cfg(feature = "debug_xxx")]
+    trace!(
+        "kernel:pid[{}] tid[{}] sys_enable_deadlock_detect",
+        current_task().unwrap().process.upgrade().unwrap().getpid(),
+        current_task().unwrap().get_tid().unwrap()
+    );
+
+    let process = current_process();
+    process.set_detect_deadlock(_enabled != 0);
+    0
 }

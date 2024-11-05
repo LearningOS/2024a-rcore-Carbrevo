@@ -6,6 +6,8 @@ use crate::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags, TaskStatus,
     },
+    mm::{*},
+    timer::get_time_us,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 
@@ -30,6 +32,7 @@ pub struct TaskInfo {
 ///
 /// exit the current task and run the next task in task list
 pub fn sys_exit(exit_code: i32) -> ! {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_exit",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -45,6 +48,7 @@ pub fn sys_yield() -> isize {
 }
 /// getpid syscall
 pub fn sys_getpid() -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel: sys_getpid pid:{}",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -53,6 +57,7 @@ pub fn sys_getpid() -> isize {
 }
 /// fork child process syscall
 pub fn sys_fork() -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_fork",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -71,6 +76,7 @@ pub fn sys_fork() -> isize {
 }
 /// exec syscall
 pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_exec",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -141,6 +147,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 
 /// kill syscall
 pub fn sys_kill(pid: usize, signal: u32) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_kill",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -163,11 +170,24 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+    #[cfg(feature="debug_exit")]
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time",
         current_task().unwrap().process.upgrade().unwrap().getpid()
     );
-    -1
+
+    let curproc = current_process();
+    let proc_inner = curproc.inner_exclusive_access();
+    let virt_ts = VirtAddr::from(_ts as usize);
+    let pge_ts = proc_inner.memory_set.translate(virt_ts.floor()).unwrap();
+    let ts = PhysAddr::from(usize::from(PhysAddr::from(pge_ts.ppn())) + virt_ts.page_offset()).get_mut::<TimeVal>();
+
+    let us = get_time_us();
+    *ts = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    0
 }
 
 /// task_info syscall
@@ -176,6 +196,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -187,6 +208,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 ///
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -198,6 +220,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 ///
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -218,6 +241,7 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -229,6 +253,7 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 ///
 /// YOUR JOB: Set task priority
 pub fn sys_set_priority(_prio: isize) -> isize {
+    #[cfg(feature = "debug_xxx")]
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().process.upgrade().unwrap().getpid()

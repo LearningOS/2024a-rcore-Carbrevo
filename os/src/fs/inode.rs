@@ -23,6 +23,7 @@ pub struct OSInodeInner {
 impl OSInode {
     /// create a new inode in memory
     pub fn new(readable: bool, writable: bool, inode: Arc<Inode>) -> Self {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: OSInode::new");
         Self {
             readable,
@@ -32,6 +33,7 @@ impl OSInode {
     }
     /// read all data from the inode in memory
     pub fn read_all(&self) -> Vec<u8> {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: OSInode::read_all");
         let mut inner = self.inner.exclusive_access();
         let mut buffer = [0u8; 512];
@@ -96,6 +98,7 @@ impl OpenFlags {
 
 /// Open a file
 pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
+    #[cfg(feature = "debug_xxx")]
     trace!("kernel: open_file: name = {}, flags = {:?}", name, flags);
     let (readable, writable) = flags.read_write();
     if flags.contains(OpenFlags::CREATE) {
@@ -130,6 +133,7 @@ impl File for OSInode {
     }
     /// read file data into buffer
     fn read(&self, mut buf: UserBuffer) -> usize {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: OSInode::read");
         let mut inner = self.inner.exclusive_access();
         let mut total_read_size = 0usize;
@@ -145,6 +149,7 @@ impl File for OSInode {
     }
     /// write buffer data into file
     fn write(&self, buf: UserBuffer) -> usize {
+        #[cfg(feature = "debug_xxx")]
         trace!("kernel: OSInode::write");
         let mut inner = self.inner.exclusive_access();
         let mut total_write_size = 0usize;

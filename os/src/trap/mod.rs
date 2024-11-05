@@ -16,12 +16,14 @@ mod context;
 
 use crate::config::TRAMPOLINE;
 use crate::syscall::syscall;
+#[allow(unused_imports)]
 use crate::task::{
     check_signals_of_current, current_add_signal, current_trap_cx, current_trap_cx_user_va,
     current_user_token, exit_current_and_run_next, suspend_current_and_run_next, SignalFlags,
 };
 use crate::timer::{check_timer, set_next_trigger};
 use core::arch::{asm, global_asm};
+#[allow(unused_imports)]
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
@@ -106,7 +108,9 @@ pub fn trap_handler() -> ! {
         }
     }
     // check signals
+    #[allow(unused_variables)]
     if let Some((errno, msg)) = check_signals_of_current() {
+        #[cfg(feature = "debug_xxx")]
         trace!("[kernel] trap_handler: .. check signals {}", msg);
         exit_current_and_run_next(errno);
     }
@@ -141,7 +145,9 @@ pub fn trap_return() -> ! {
 /// handle trap from kernel
 #[no_mangle]
 pub fn trap_from_kernel() -> ! {
+    #[allow(unused_imports)]
     use riscv::register::sepc;
+    #[cfg(feature = "debug_xxx")]
     trace!("stval = {:#x}, sepc = {:#x}", stval::read(), sepc::read());
     panic!("a trap {:?} from kernel!", scause::read().cause());
 }
